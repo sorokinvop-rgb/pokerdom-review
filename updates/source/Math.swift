@@ -24,16 +24,29 @@ func retrospective(_ hero:[Card],_ opponent:[Card],_ board:[Card],short:Bool)->S
 // Portable diagnostics helpers. Do not guess the game from a number or an obscured caption.
 func detectGameFormat(_ raw:String)->String {
  let lower=raw.lowercased()
- if lower.contains("омаха") || lower.contains("omaha") {return "Омаха"}
- if lower.contains("холдем") || lower.contains("holdem") || lower.contains("hold'em") {return lower.contains("6+") ? "6+ Холдем" : "Холдем"}
- return "не определён"
+ let omaha=lower.range(of:#"(?<![\p{L}])(?:омаха|omaha)(?![\p{L}])"#,options:.regularExpression) != nil
+ let holdem=lower.range(of:#"(?<![\p{L}])(?:холдем|holdem|hold['’]em)(?![\p{L}])"#,options:.regularExpression) != nil
+ guard omaha != holdem else{return "не определён"}
+ if omaha {return "Омаха"}
+ let short=lower.range(of:#"(?:6[ \t]*\+[ \t]*(?:холдем|holdem|hold['’]em)|(?:холдем|holdem|hold['’]em)[ \t]*6[ \t]*\+)"#,options:.regularExpression) != nil
+ return short ? "6+ Холдем" : "Холдем"
 }
 func hasActiveAction(_ lines:[String])->Bool {
- let active:Set<String>=["ставит","чек","колл","рейз","bet","check","call","raise"]
- return lines.contains{active.contains($0.trimmingCharacters(in:.whitespacesAndNewlines).lowercased())}
+ let active:Set<String>=["ставит","чек","колл","рейз","фолд","бет","думает","bet","check","call","raise","fold","thinking"]
+ let punctuation=CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+ return lines.contains{active.contains($0.trimmingCharacters(in:punctuation).lowercased())}
+}
+func isReviewWindow(_ raw:String)->Bool {
+ let lower=raw.lowercased()
+ return lower.contains("установить zip") && (lower.contains("показать ocr") || lower.contains("журнал отчётов") || lower.contains("проверить обновления") || lower.contains("обновить из github"))
+}
+enum CardReadFailure: String, Codable {case notChecked, unreadableImage, unsupportedLayout, rankUnconfirmed, suitUnconfirmed, duplicateCards, none}
+func isSupportedCardLayout(width:Int,height:Int)->Bool {
+ guard width>0,height>0 else{return false}
+ return abs(Double(width)/Double(height)-1350.0/1120.0)<0.045
 }
 enum ReviewGate: String, Codable {
- case notChecked, activeAction, unknownFormat, unsupportedFormat, missingShowdownMarkers, cardsUnconfirmed, candidate
+ case notChecked, activeAction, unknownFormat, unsupportedFormat, missingShowdownMarkers, cardsUnconfirmed, candidate, notTableImage
  static func assess(game:String, markers:Int, active:Bool, cardsRecognized:Bool)->ReviewGate {
   if active {return .activeAction}
   if game == "не определён" {return .unknownFormat}
@@ -51,7 +64,8 @@ struct DiagnosticEvent: Codable {
  var bank:Bool=false
  var payout:Bool=false
  var reason:ReviewGate = .notChecked
- var body:String {"review_version=2.7\nstatus=\(status.rawValue)\nstacks=\(max(0,min(6,stacks)))\ncards=\(max(0,min(9,cards)))\nbank_detected=\(bank)\npayout_detected=\(payout)\nreason=\(reason.rawValue)"}
+ var cardFailure:CardReadFailure? = nil
+ var body:String {"review_version=2.8\nstatus=\(status.rawValue)\nstacks=\(max(0,min(6,stacks)))\ncards=\(max(0,min(9,cards)))\nbank_detected=\(bank)\npayout_detected=\(payout)\nreason=\(reason.rawValue)\ncard_failure=\((cardFailure ?? .notChecked).rawValue)"}
 }
 
 
