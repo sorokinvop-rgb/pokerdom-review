@@ -19,10 +19,10 @@ app.setActivationPolicy(.regular)
 let reviewIconBase64 = "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAYFBMVEUZLScLXScIoDUd41vW3NNfaGeUmpqe1K4frUtr4Y670cM5R0R2koNZpG/ZWFtNznQ2PUK6DxLmlZfJKi97eYHQPULffYD8/PwLFxgDCAsYJSXo6OgU1lDT1ta1t7gFmTBCfxLuAAAAIHRSTlP//////v/7//////////////////////3////9//39/z/7UqkAAAHoSURBVHjabZTbmpwgEIS7ERCPc9gkIAi8/1umGp0ZN1k+Lxz7V7qqiyH/fWmtvz+gy322Q9eWKekHQBuKe6u7ECeb/gGSIaLoum7fO6YY41S+AeMUUY/EJNyx7AWw58OwtRWOH/YN9Bw+5RDCgQQ3noDuZNuA0lTKbA4wSkP6AG5ojeVpaB6kYibaNoKeoQH9vu8qbNFYbPpcT0sMcSefAABlioyoKl6v69ujwvs+AOg7KEcp+zz6df36WG1U5wAsSilK3pgERvvnBYAlmfw9EIUCwNikf/95vuspQnEhTZHCZvyctPX68fh6A0UssaSjAOjVGohYH5cdTgAWwYOcaAOQDg16GCDwBTRvLcZZ3i9Dmc8wjslSa0Wa8HM+qnh7UDdvYaaKmjw1IKR0ZkQ71eOSFhxTItwgBdtWsky378deub5WtBCcCwZGjQynsIcWwKlhrguYZKnbaSsyCweAN7KYvq5VPr+wMRgEi3qZJgAVg8mSHNUuYoyBg2RK8rBUVTlM0mA/6mUiUt1e0TydiUpcK2/3nLO2v0xk5TrFoq28MpmZJYsYGjFXaUnKl9D6MZ5xBsDcnDnrr3OR7w0gxS/iPBafozfDrI2Rrtp2MPm/s5mBVMSzomNTfjzdfuyH222Z++s/wF9l4kVzL+BofQAAAABJRU5ErkJggg=="
 if let iconData = Data(base64Encoded:reviewIconBase64), let icon = NSImage(data:iconData) { app.applicationIconImage = icon }
 let window = NSWindow(contentRect:NSRect(x:0,y:0,width:1000,height:850),styleMask:[.titled,.closable,.resizable],backing:.buffered,defer:false)
-window.title="Pokerdom Review 2.6 — архив раздач"
+window.title="Pokerdom Review 2.7 — архив раздач"
 let root=NSStackView(); root.orientation = .vertical; root.alignment = .leading; root.spacing=12; root.edgeInsets=NSEdgeInsets(top:16,left:16,bottom:16,right:16)
 window.contentView=root
-let intro=NSTextField(wrappingLabelWithString:"Версия 2.6. Откройте сохранённый скриншот завершённой раздачи. Распознавание локальное; карты и суммы требуют проверки. Программа не подключается к игровому столу.")
+let intro=NSTextField(wrappingLabelWithString:"Версия 2.7. Откройте сохранённый скриншот завершённой раздачи. Распознавание локальное; карты и суммы требуют проверки. Программа не подключается к игровому столу.")
 root.addArrangedSubview(intro)
 let summary=NSTextField(wrappingLabelWithString:"Выберите сохранённую раздачу"); summary.font = .systemFont(ofSize:18,weight:.semibold); root.addArrangedSubview(summary)
 let handsLabel=NSTextField(wrappingLabelWithString:"Открытые карты: не подтверждены"); root.addArrangedSubview(handsLabel)
@@ -36,15 +36,25 @@ final class DiagnosticsAction:NSObject, URLSessionTaskDelegate {
  static let shared=DiagnosticsAction()
  private let service="local.pokerdom.review.github.diagnostics"
  private let enabledKey="githubDiagnostics230"
+ private let queueKey="githubDiagnosticsQueue270"
  private var sending=false
+ private var generation=0
  private var lastSent=Date.distantPast
- private var pending=DiagnosticQueue()
+ private var cachedToken:String?
+ private var attemptedSilentRead=false
+ private lazy var pending=DiagnosticQueue.restore(UserDefaults.standard.data(forKey:queueKey))
  private var timer:Timer?
  private var enabled:Bool {UserDefaults.standard.bool(forKey:enabledKey)}
  private var query:[String:Any] {[kSecClass as String:kSecClassGenericPassword,kSecAttrService as String:service,kSecAttrAccount as String:"github-token"]}
- private func token()->String? {
+ private func persist(){UserDefaults.standard.set(try? JSONEncoder().encode(pending.events),forKey:queueKey)}
+ private func token(interactive:Bool)->String? {
+  if let secret=cachedToken {return secret}
+  if !interactive && attemptedSilentRead {return nil}
+  attemptedSilentRead=true
   var q=query; q[kSecReturnData as String]=true; q[kSecMatchLimit as String]=kSecMatchLimitOne
-  var result:CFTypeRef?; guard SecItemCopyMatching(q as CFDictionary,&result)==errSecSuccess,let data=result as? Data else{return nil}; return String(data:data,encoding:.utf8)
+  if !interactive {q[kSecUseAuthenticationUI as String]=kSecUseAuthenticationUIFail}
+  var result:CFTypeRef?; guard SecItemCopyMatching(q as CFDictionary,&result)==errSecSuccess,let data=result as? Data,let secret=String(data:data,encoding:.utf8),secret.hasPrefix("github_pat_") else{return nil}
+  cachedToken=secret;return secret
  }
  private func store(_ token:String)->Bool {
   let data=Data(token.utf8); let status=SecItemUpdate(query as CFDictionary,[kSecValueData as String:data] as CFDictionary)
@@ -54,31 +64,39 @@ final class DiagnosticsAction:NSObject, URLSessionTaskDelegate {
  private lazy var session:URLSession = {let c=URLSessionConfiguration.ephemeral;c.httpShouldSetCookies=false;c.urlCache=nil;return URLSession(configuration:c,delegate:self,delegateQueue:nil)}()
  func urlSession(_ session:URLSession,task:URLSessionTask,willPerformHTTPRedirection response:HTTPURLResponse,newRequest request:URLRequest,completionHandler:@escaping (URLRequest?)->Void){completionHandler(nil)}
  @objc func configure(){
-  let a=NSAlert(); a.messageText="Публичная диагностика GitHub"; a.informativeText="Отчёты в Issue #1 публичны и привязаны к вашему GitHub-аккаунту. Только версия, технический статус и количества распознанных элементов. Без карт, сумм, имён, путей, OCR и изображений. Токен хранится в Связке ключей macOS. Используйте fine-grained token только для pokerdom-review, Issues: Read and write."
-  a.addButton(withTitle:"Подключить");a.addButton(withTitle:"Отключить");a.addButton(withTitle:"Отмена")
-  let field=NSSecureTextField(frame:NSRect(x:0,y:0,width:340,height:24));field.placeholderString="GitHub fine-grained token";a.accessoryView=field
+  let a=NSAlert(); a.messageText="Публичная диагностика GitHub"; a.informativeText="Отчёты в Issue #1 публичны и привязаны к вашему аккаунту. Только технические поля. Оставьте поле пустым, чтобы разрешить доступ к сохранённому токену один раз за запуск. Новый токен вводите только при его замене."
+  a.addButton(withTitle:"Подключить / разрешить доступ");a.addButton(withTitle:"Отключить");a.addButton(withTitle:"Отмена")
+  let field=NSSecureTextField(frame:NSRect(x:0,y:0,width:340,height:24));field.placeholderString="Новый токен (необязательно)";a.accessoryView=field
   let choice=a.runModal()
-  if choice == .alertSecondButtonReturn {UserDefaults.standard.set(false,forKey:enabledKey);pending.clear();timer?.invalidate();timer=nil;SecItemDelete(query as CFDictionary);updateStatus();return}
+  if choice == .alertSecondButtonReturn {UserDefaults.standard.set(false,forKey:enabledKey);generation+=1;pending.clear();persist();timer?.invalidate();timer=nil;cachedToken=nil;attemptedSilentRead=true;updateStatus();return}
   guard choice == .alertFirstButtonReturn else{return}
   let value=field.stringValue.trimmingCharacters(in:.whitespacesAndNewlines)
-  guard value.hasPrefix("github_pat_"),store(value) else{diagnosticStatus.stringValue="GitHub: нужен fine-grained token / ошибка Keychain";return}
-  UserDefaults.standard.set(true,forKey:enabledKey);lastSent=Date.distantPast;publish(DiagnosticEvent(status:.connected));
+  if value.isEmpty {guard token(interactive:true) != nil else {diagnosticStatus.stringValue="GitHub: доступ не разрешён; очередь сохранена";return}}
+  else {guard value.hasPrefix("github_pat_"),store(value) else {diagnosticStatus.stringValue="GitHub: ошибка сохранения токена";return};cachedToken=value;attemptedSilentRead=true}
+  UserDefaults.standard.set(true,forKey:enabledKey);lastSent=Date.distantPast;publish(DiagnosticEvent(status:.connected));flush()
  }
  func updateStatus(){diagnosticStatus.stringValue=enabled ? "GitHub: включён" : "GitHub: выключен"}
  func publish(_ event:DiagnosticEvent){
-  guard !diagnosticMode,enabled else{return};guard pending.append(event) else{diagnosticStatus.stringValue="GitHub: очередь заполнена; отчёт остался локально";return};flush()
+  guard !diagnosticMode,enabled else{return};guard pending.append(event) else{diagnosticStatus.stringValue="GitHub: очередь заполнена; отчёт остался локально";flush();return};persist();flush()
  }
  private func flush(){
-  guard enabled,!sending,let event=pending.events.first else{return}
+  guard enabled,!sending,!pending.events.isEmpty else{return}
   let delay=60-Date().timeIntervalSince(lastSent)
   if delay>0 {if timer==nil {timer=Timer.scheduledTimer(withTimeInterval:delay,repeats:false){[weak self] _ in self?.timer=nil;self?.flush()}};return}
-  guard let secret=token() else{diagnosticStatus.stringValue="GitHub: настройте токен";return}
+  guard let secret=token(interactive:false) else{diagnosticStatus.stringValue="GitHub: разрешите доступ через Журнал GitHub…";return}
+  let events=pending.batch(), currentGeneration=generation
   let url=URL(string:"https://api.github.com/repos/sorokinvop-rgb/pokerdom-review/issues/1/comments")!
-  var request=URLRequest(url:url,timeoutInterval:20);request.httpMethod="POST";request.setValue("Bearer "+secret,forHTTPHeaderField:"Authorization");request.setValue("application/vnd.github+json",forHTTPHeaderField:"Accept");request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.setValue("PokerdomReview/2.6",forHTTPHeaderField:"User-Agent");request.httpBody=try? JSONSerialization.data(withJSONObject:["body":event.body])
-  pending.pop();sending=true;lastSent=Date();diagnosticStatus.stringValue="GitHub: отправка… в очереди \(pending.events.count)"
+  var request=URLRequest(url:url,timeoutInterval:20);request.httpMethod="POST";request.setValue("Bearer "+secret,forHTTPHeaderField:"Authorization");request.setValue("application/vnd.github+json",forHTTPHeaderField:"Accept");request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.setValue("PokerdomReview/2.7",forHTTPHeaderField:"User-Agent");request.httpBody=try? JSONSerialization.data(withJSONObject:["body":events.map{$0.body}.joined(separator:"\n\n---\n\n")])
+  sending=true;lastSent=Date();diagnosticStatus.stringValue="GitHub: отправка \(events.count) отчётов…"
   session.dataTask(with:request){[weak self] _,response,error in
    let code=(response as? HTTPURLResponse)?.statusCode ?? 0
-   DispatchQueue.main.async {guard let self=self else{return};self.sending=false;guard self.enabled else{return};if code==201 && error==nil {diagnosticStatus.stringValue="GitHub: отчёт доставлен; в очереди \(self.pending.events.count)"}else{diagnosticStatus.stringValue=code==0 ? "GitHub: сеть недоступна" : "GitHub: HTTP \(code)"};self.flush()}
+   DispatchQueue.main.async {
+    guard let self=self else{return};self.sending=false
+    guard self.enabled else{return};guard self.generation==currentGeneration else{self.flush();return}
+    if code==201 && error==nil {self.pending.acknowledge(events.count);self.persist();diagnosticStatus.stringValue="GitHub: доставлено \(events.count); в очереди \(self.pending.events.count)"}
+    else {diagnosticStatus.stringValue="GitHub: HTTP \(code); очередь сохранена";if code==401 || code==403 || code==404 {self.cachedToken=nil;self.attemptedSilentRead=true;return}}
+    self.flush()
+   }
   }.resume()
  }
 }
