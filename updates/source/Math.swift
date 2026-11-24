@@ -32,6 +32,16 @@ func hasActiveAction(_ lines:[String])->Bool {
  let active:Set<String>=["ставит","чек","колл","рейз","bet","check","call","raise"]
  return lines.contains{active.contains($0.trimmingCharacters(in:.whitespacesAndNewlines).lowercased())}
 }
+enum ReviewGate: String {
+ case notChecked, activeAction, unknownFormat, unsupportedFormat, missingShowdownMarkers, cardsUnconfirmed, candidate
+ static func assess(game:String, markers:Int, active:Bool, cardsRecognized:Bool)->ReviewGate {
+  if active {return .activeAction}
+  if game == "не определён" {return .unknownFormat}
+  if game != "Холдем" && game != "6+ Холдем" {return .unsupportedFormat}
+  if markers < 2 {return .missingShowdownMarkers}
+  return cardsRecognized ? .candidate : .cardsUnconfirmed
+ }
+}
 // Public payload: only closed enums, bounded counters and booleans. No input strings.
 struct DiagnosticEvent {
  enum Status:String {case connected, completed, unconfirmed, recognitionError}
@@ -40,9 +50,19 @@ struct DiagnosticEvent {
  var cards:Int=0
  var bank:Bool=false
  var payout:Bool=false
- var body:String {"review_version=2.5\nstatus=\(status.rawValue)\nstacks=\(max(0,min(6,stacks)))\ncards=\(max(0,min(9,cards)))\nbank_detected=\(bank)\npayout_detected=\(payout)"}
+ var reason:ReviewGate = .notChecked
+ var body:String {"review_version=2.6\nstatus=\(status.rawValue)\nstacks=\(max(0,min(6,stacks)))\ncards=\(max(0,min(9,cards)))\nbank_detected=\(bank)\npayout_detected=\(payout)\nreason=\(reason.rawValue)"}
 }
 
+
+// Bound the in-memory queue. Never silently replace an older report.
+struct DiagnosticQueue {
+ private(set) var events:[DiagnosticEvent]=[]
+ let capacity:Int=100
+ mutating func append(_ event:DiagnosticEvent)->Bool {guard events.count<capacity else{return false};events.append(event);return true}
+ mutating func pop(){if !events.isEmpty {events.removeFirst()}}
+ mutating func clear(){events.removeAll()}
+}
 
 // Fixed allowlist for the opt-in GitHub source update channel.
 let updateSourceNames = ["main.swift", "Math.swift", "Cards.swift", "Templates.swift", "Update.swift"]
