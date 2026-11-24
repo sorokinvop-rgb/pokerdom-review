@@ -12,17 +12,17 @@ var archivedShowdown = false
 var baseReport=""
 var analysisText=""
 var savedText=""
-func refreshReport(){ summary.stringValue = baseReport.components(separatedBy:"\n").filter { $0.hasPrefix("Банк:") || $0.hasPrefix("Формат:") || $0.hasPrefix("Возможная выплата:") }.joined(separator:"   •   "); handsLabel.stringValue = visibleHands.map { "Открытые карты: слева сверху \(prettyCards($0.1))  •  слева снизу \(prettyCards($0.0))" } ?? "Открытые карты: не подтверждены"; output.string = [baseReport,analysisText,savedText].filter{ !$0.isEmpty }.joined(separator:"\n\n") }
+func refreshReport(){ let headline=baseReport.components(separatedBy:"\n").filter { $0.hasPrefix("Банк:") || $0.hasPrefix("Формат:") || $0.hasPrefix("Возможная выплата:") }.joined(separator:"   •   "); summary.stringValue = headline.isEmpty ? (baseReport.components(separatedBy:"\n").first ?? "") : headline; handsLabel.stringValue = visibleHands.map { "Открытые карты: слева сверху \(prettyCards($0.1))  •  слева снизу \(prettyCards($0.0))" } ?? "Открытые карты: не подтверждены"; output.string = [baseReport,analysisText,savedText].filter{ !$0.isEmpty }.joined(separator:"\n\n") }
 func imageDigest(_ url:URL)throws->String { SHA256.hash(data:try Data(contentsOf:url)).map{String(format:"%02x",Int($0))}.joined() }
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
 let reviewIconBase64 = "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAYFBMVEUZLScLXScIoDUd41vW3NNfaGeUmpqe1K4frUtr4Y670cM5R0R2koNZpG/ZWFtNznQ2PUK6DxLmlZfJKi97eYHQPULffYD8/PwLFxgDCAsYJSXo6OgU1lDT1ta1t7gFmTBCfxLuAAAAIHRSTlP//////v/7//////////////////////3////9//39/z/7UqkAAAHoSURBVHjabZTbmpwgEIS7ERCPc9gkIAi8/1umGp0ZN1k+Lxz7V7qqiyH/fWmtvz+gy322Q9eWKekHQBuKe6u7ECeb/gGSIaLoum7fO6YY41S+AeMUUY/EJNyx7AWw58OwtRWOH/YN9Bw+5RDCgQQ3noDuZNuA0lTKbA4wSkP6AG5ojeVpaB6kYibaNoKeoQH9vu8qbNFYbPpcT0sMcSefAABlioyoKl6v69ujwvs+AOg7KEcp+zz6df36WG1U5wAsSilK3pgERvvnBYAlmfw9EIUCwNikf/95vuspQnEhTZHCZvyctPX68fh6A0UssaSjAOjVGohYH5cdTgAWwYOcaAOQDg16GCDwBTRvLcZZ3i9Dmc8wjslSa0Wa8HM+qnh7UDdvYaaKmjw1IKR0ZkQ71eOSFhxTItwgBdtWsky378deub5WtBCcCwZGjQynsIcWwKlhrguYZKnbaSsyCweAN7KYvq5VPr+wMRgEi3qZJgAVg8mSHNUuYoyBg2RK8rBUVTlM0mA/6mUiUt1e0TydiUpcK2/3nLO2v0xk5TrFoq28MpmZJYsYGjFXaUnKl9D6MZ5xBsDcnDnrr3OR7w0gxS/iPBafozfDrI2Rrtp2MPm/s5mBVMSzomNTfjzdfuyH222Z++s/wF9l4kVzL+BofQAAAABJRU5ErkJggg=="
 if let iconData = Data(base64Encoded:reviewIconBase64), let icon = NSImage(data:iconData) { app.applicationIconImage = icon }
 let window = NSWindow(contentRect:NSRect(x:0,y:0,width:1000,height:850),styleMask:[.titled,.closable,.resizable],backing:.buffered,defer:false)
-window.title="Pokerdom Review 2.7 — архив раздач"
+window.title="Pokerdom Review 2.8 — архив раздач"
 let root=NSStackView(); root.orientation = .vertical; root.alignment = .leading; root.spacing=12; root.edgeInsets=NSEdgeInsets(top:16,left:16,bottom:16,right:16)
 window.contentView=root
-let intro=NSTextField(wrappingLabelWithString:"Версия 2.7. Откройте сохранённый скриншот завершённой раздачи. Распознавание локальное; карты и суммы требуют проверки. Программа не подключается к игровому столу.")
+let intro=NSTextField(wrappingLabelWithString:"Версия 2.8. Откройте сохранённый скриншот завершённой раздачи. Распознавание локальное; карты и суммы требуют проверки. Программа не подключается к игровому столу.")
 root.addArrangedSubview(intro)
 let summary=NSTextField(wrappingLabelWithString:"Выберите сохранённую раздачу"); summary.font = .systemFont(ofSize:18,weight:.semibold); root.addArrangedSubview(summary)
 let handsLabel=NSTextField(wrappingLabelWithString:"Открытые карты: не подтверждены"); root.addArrangedSubview(handsLabel)
@@ -86,7 +86,7 @@ final class DiagnosticsAction:NSObject, URLSessionTaskDelegate {
   guard let secret=token(interactive:false) else{diagnosticStatus.stringValue="GitHub: разрешите доступ через Журнал GitHub…";return}
   let events=pending.batch(), currentGeneration=generation
   let url=URL(string:"https://api.github.com/repos/sorokinvop-rgb/pokerdom-review/issues/1/comments")!
-  var request=URLRequest(url:url,timeoutInterval:20);request.httpMethod="POST";request.setValue("Bearer "+secret,forHTTPHeaderField:"Authorization");request.setValue("application/vnd.github+json",forHTTPHeaderField:"Accept");request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.setValue("PokerdomReview/2.7",forHTTPHeaderField:"User-Agent");request.httpBody=try? JSONSerialization.data(withJSONObject:["body":events.map{$0.body}.joined(separator:"\n\n---\n\n")])
+  var request=URLRequest(url:url,timeoutInterval:20);request.httpMethod="POST";request.setValue("Bearer "+secret,forHTTPHeaderField:"Authorization");request.setValue("application/vnd.github+json",forHTTPHeaderField:"Accept");request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.setValue("PokerdomReview/2.8",forHTTPHeaderField:"User-Agent");request.httpBody=try? JSONSerialization.data(withJSONObject:["body":events.map{$0.body}.joined(separator:"\n\n---\n\n")])
   sending=true;lastSent=Date();diagnosticStatus.stringValue="GitHub: отправка \(events.count) отчётов…"
   session.dataTask(with:request){[weak self] _,response,error in
    let code=(response as? HTTPURLResponse)?.statusCode ?? 0
@@ -127,13 +127,13 @@ class Actions:NSObject {
  heroField.stringValue=""; oppField.stringValue=""; boardField.stringValue=""; preview.image=nil; baseReport="Пакет: \(count) уникальных файлов\n\n"+batch.joined(separator:"\n\n────────\n\n"); analysisText=""; savedText=""; visibleHands=nil; archivedShowdown=false; refreshReport()
  }
  func process(_ url:URL){
- visibleHands=nil; archivedShowdown=false; heroField.stringValue=""; oppField.stringValue=""; boardField.stringValue=""; format.state = .off; preview.image=NSImage(contentsOf:url); baseReport=""; analysisText=""; savedText=""; summary.stringValue="Распознавание…"; output.string="Распознавание…"
+ lastOCR=""; visibleHands=nil; archivedShowdown=false; heroField.stringValue=""; oppField.stringValue=""; boardField.stringValue=""; format.state = .off; preview.image=NSImage(contentsOf:url); baseReport=""; analysisText=""; savedText=""; summary.stringValue="Распознавание…"; output.string="Распознавание…"
  let request=VNRecognizeTextRequest(); request.recognitionLevel = .accurate; request.recognitionLanguages=["ru-RU","en-US"]; request.usesLanguageCorrection=false
  do {
  try VNImageRequestHandler(url:url,options:[:]).perform([request])
  let lines=(request.results ?? []).compactMap{$0.topCandidates(1).first?.string}
  let raw=lines.joined(separator:"\n")
- if raw.contains("Проверить обновления") && raw.contains("Установить ZIP") { lastOCR=raw; baseReport="Выбран снимок приложения, а не исходный снимок стола."; refreshReport(); return }
+ if isReviewWindow(raw) { lastOCR=raw; baseReport="Выбран снимок приложения, а не исходный снимок стола."; refreshReport(); DiagnosticsAction.shared.publish(DiagnosticEvent(status:.unconfirmed,reason:.notTableImage)); return }
  let bankLines=(request.results ?? []).filter { obs in
    let r=obs.boundingBox; return r.midX > 0.25 && r.midX < 0.75 && r.midY > 0.55 && r.midY < 0.75
  }.compactMap{$0.topCandidates(1).first?.string}
@@ -160,7 +160,8 @@ class Actions:NSObject {
  }
  let active=hasActiveAction(lines)
  let preliminary=ReviewGate.assess(game:game,markers:combos.count,active:active,cardsRecognized:false)
- let detected = preliminary == .cardsUnconfirmed ? recognizeArchivedCards(url) : nil
+ var cardFailure = CardReadFailure.notChecked
+ let detected = preliminary == .cardsUnconfirmed ? recognizeArchivedCards(url, failure:&cardFailure) : nil
  let reason=ReviewGate.assess(game:game,markers:combos.count,active:active,cardsRecognized:detected != nil)
  archivedShowdown = reason == .candidate
  if let (a,c,b)=detected, archivedShowdown { boardField.stringValue=b; visibleHands=(a,c) }
@@ -175,8 +176,8 @@ class Actions:NSObject {
  baseReport=report; refreshReport()
  if diagnosticMode { return }
  let dir=FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/Pokerdom Review")
- do {try FileManager.default.createDirectory(at:dir,withIntermediateDirectories:true,attributes:nil); try (report+"\n\n"+analysisText).write(to:dir.appendingPathComponent((try imageDigest(url))+".txt"),atomically:true,encoding:.utf8); savedText="Отчёт сохранён в Документы/Pokerdom Review"; DiagnosticsAction.shared.publish(DiagnosticEvent(status:archivedShowdown ? .completed : .unconfirmed, stacks:recognizedStacks, cards:archivedShowdown ? 9 : 0, bank:bank != "не распознан", payout:payout != "не подтверждён", reason:reason)); refreshReport()} catch {output.string += "\n\nНе удалось сохранить отчёт: \(error.localizedDescription)"}
- } catch {output.string="Ошибка: \(error.localizedDescription)"; DiagnosticsAction.shared.publish(DiagnosticEvent(status:.recognitionError))}
+ do {try FileManager.default.createDirectory(at:dir,withIntermediateDirectories:true,attributes:nil); try (report+"\n\n"+analysisText).write(to:dir.appendingPathComponent((try imageDigest(url))+".txt"),atomically:true,encoding:.utf8); savedText="Отчёт сохранён в Документы/Pokerdom Review"; DiagnosticsAction.shared.publish(DiagnosticEvent(status:archivedShowdown ? .completed : .unconfirmed, stacks:recognizedStacks, cards:archivedShowdown ? 9 : 0, bank:bank != "не распознан", payout:payout != "не подтверждён", reason:reason, cardFailure:cardFailure)); refreshReport()} catch {output.string += "\n\nНе удалось сохранить отчёт: \(error.localizedDescription)"}
+ } catch {baseReport="Ошибка чтения изображения: \(error.localizedDescription)"; refreshReport(); DiagnosticsAction.shared.publish(DiagnosticEvent(status:.recognitionError))}
  }
 }
 let fields=NSStackView(); fields.orientation = .horizontal
