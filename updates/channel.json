@@ -1,1 +1,1 @@
-{"version":"2.5","base":"2.4","commit":"98d536599b4e471a42d55371e8d74fafae93edbb","files":[{"name":"main.swift","sha256":"49706febe5d6d085ebacd9a08883ba01ea3c052235419e20cf894085a40c9999"},{"name":"Math.swift","sha256":"70ca84be4de9d675b03ec7cfdb579286eaf936bdb0e0651e03149df959a554bd"}]}
+{"version":"2.6","base":"2.5","commit":"35939cb939984a9f12f0c83f50991ea3b134f63a","files":[{"name":"main.swift","sha256":"26e1d9646a731b6cb61f14b66dd6e7d9c0485be06cdad5955db393f23721bfad"},{"name":"Math.swift","sha256":"da47c9e11c0e20c14180d760e263775c40e3389fa24d1cc1b4f38e0fc46cafaa"}]}
