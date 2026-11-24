@@ -32,7 +32,7 @@ func hasActiveAction(_ lines:[String])->Bool {
  let active:Set<String>=["ставит","чек","колл","рейз","bet","check","call","raise"]
  return lines.contains{active.contains($0.trimmingCharacters(in:.whitespacesAndNewlines).lowercased())}
 }
-enum ReviewGate: String {
+enum ReviewGate: String, Codable {
  case notChecked, activeAction, unknownFormat, unsupportedFormat, missingShowdownMarkers, cardsUnconfirmed, candidate
  static func assess(game:String, markers:Int, active:Bool, cardsRecognized:Bool)->ReviewGate {
   if active {return .activeAction}
@@ -43,25 +43,30 @@ enum ReviewGate: String {
  }
 }
 // Public payload: only closed enums, bounded counters and booleans. No input strings.
-struct DiagnosticEvent {
- enum Status:String {case connected, completed, unconfirmed, recognitionError}
+struct DiagnosticEvent: Codable {
+ enum Status:String, Codable {case connected, completed, unconfirmed, recognitionError}
  let status:Status
  var stacks:Int=0
  var cards:Int=0
  var bank:Bool=false
  var payout:Bool=false
  var reason:ReviewGate = .notChecked
- var body:String {"review_version=2.6\nstatus=\(status.rawValue)\nstacks=\(max(0,min(6,stacks)))\ncards=\(max(0,min(9,cards)))\nbank_detected=\(bank)\npayout_detected=\(payout)\nreason=\(reason.rawValue)"}
+ var body:String {"review_version=2.7\nstatus=\(status.rawValue)\nstacks=\(max(0,min(6,stacks)))\ncards=\(max(0,min(9,cards)))\nbank_detected=\(bank)\npayout_detected=\(payout)\nreason=\(reason.rawValue)"}
 }
 
 
-// Bound the in-memory queue. Never silently replace an older report.
+// Persist only typed technical events, never credentials or OCR.
 struct DiagnosticQueue {
  private(set) var events:[DiagnosticEvent]=[]
  let capacity:Int=100
  mutating func append(_ event:DiagnosticEvent)->Bool {guard events.count<capacity else{return false};events.append(event);return true}
- mutating func pop(){if !events.isEmpty {events.removeFirst()}}
+ func batch()->[DiagnosticEvent] {Array(events.prefix(10))}
+ mutating func acknowledge(_ count:Int){events.removeFirst(max(0,min(count,events.count)))}
+ mutating func pop(){acknowledge(1)}
  mutating func clear(){events.removeAll()}
+ static func restore(_ data:Data?)->DiagnosticQueue {
+  var q=DiagnosticQueue();if let data=data,data.count<=100_000,let values=try? JSONDecoder().decode([DiagnosticEvent].self,from:data){q.events=Array(values.prefix(q.capacity))};return q
+ }
 }
 
 // Fixed allowlist for the opt-in GitHub source update channel.
