@@ -9,6 +9,8 @@ var lastOCR=""
 var visibleHands: (String,String)?
 func prettyCards(_ s:String)->String { s.split(separator:" ").map { token in let t=String(token); return String(t.dropLast()).replacingOccurrences(of:"T",with:"10") + (["C":"♣","D":"♦","H":"♥","S":"♠"][String(t.suffix(1))] ?? "?") }.joined(separator:" ") }
 var archivedShowdown = false
+var archivedOmahaCandidate = false
+var manualReviewGame:String? = nil
 var baseReport=""
 var analysisText=""
 var savedText=""
@@ -19,10 +21,10 @@ app.setActivationPolicy(.regular)
 let reviewIconBase64 = "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAYFBMVEUZLScLXScIoDUd41vW3NNfaGeUmpqe1K4frUtr4Y670cM5R0R2koNZpG/ZWFtNznQ2PUK6DxLmlZfJKi97eYHQPULffYD8/PwLFxgDCAsYJSXo6OgU1lDT1ta1t7gFmTBCfxLuAAAAIHRSTlP//////v/7//////////////////////3////9//39/z/7UqkAAAHoSURBVHjabZTbmpwgEIS7ERCPc9gkIAi8/1umGp0ZN1k+Lxz7V7qqiyH/fWmtvz+gy322Q9eWKekHQBuKe6u7ECeb/gGSIaLoum7fO6YY41S+AeMUUY/EJNyx7AWw58OwtRWOH/YN9Bw+5RDCgQQ3noDuZNuA0lTKbA4wSkP6AG5ojeVpaB6kYibaNoKeoQH9vu8qbNFYbPpcT0sMcSefAABlioyoKl6v69ujwvs+AOg7KEcp+zz6df36WG1U5wAsSilK3pgERvvnBYAlmfw9EIUCwNikf/95vuspQnEhTZHCZvyctPX68fh6A0UssaSjAOjVGohYH5cdTgAWwYOcaAOQDg16GCDwBTRvLcZZ3i9Dmc8wjslSa0Wa8HM+qnh7UDdvYaaKmjw1IKR0ZkQ71eOSFhxTItwgBdtWsky378deub5WtBCcCwZGjQynsIcWwKlhrguYZKnbaSsyCweAN7KYvq5VPr+wMRgEi3qZJgAVg8mSHNUuYoyBg2RK8rBUVTlM0mA/6mUiUt1e0TydiUpcK2/3nLO2v0xk5TrFoq28MpmZJYsYGjFXaUnKl9D6MZ5xBsDcnDnrr3OR7w0gxS/iPBafozfDrI2Rrtp2MPm/s5mBVMSzomNTfjzdfuyH222Z++s/wF9l4kVzL+BofQAAAABJRU5ErkJggg=="
 if let iconData = Data(base64Encoded:reviewIconBase64), let icon = NSImage(data:iconData) { app.applicationIconImage = icon }
 let window = NSWindow(contentRect:NSRect(x:0,y:0,width:1000,height:850),styleMask:[.titled,.closable,.resizable],backing:.buffered,defer:false)
-window.title="Pokerdom Review 2.8 — архив раздач"
+window.title="Pokerdom Review 2.9 — архив раздач"
 let root=NSStackView(); root.orientation = .vertical; root.alignment = .leading; root.spacing=12; root.edgeInsets=NSEdgeInsets(top:16,left:16,bottom:16,right:16)
 window.contentView=root
-let intro=NSTextField(wrappingLabelWithString:"Версия 2.8. Откройте сохранённый скриншот завершённой раздачи. Распознавание локальное; карты и суммы требуют проверки. Программа не подключается к игровому столу.")
+let intro=NSTextField(wrappingLabelWithString:"Версия 2.9. Откройте сохранённый скриншот завершённой раздачи. Распознавание локальное; карты и суммы требуют проверки. Программа не подключается к игровому столу.")
 root.addArrangedSubview(intro)
 let summary=NSTextField(wrappingLabelWithString:"Выберите сохранённую раздачу"); summary.font = .systemFont(ofSize:18,weight:.semibold); root.addArrangedSubview(summary)
 let handsLabel=NSTextField(wrappingLabelWithString:"Открытые карты: не подтверждены"); root.addArrangedSubview(handsLabel)
@@ -86,7 +88,7 @@ final class DiagnosticsAction:NSObject, URLSessionTaskDelegate {
   guard let secret=token(interactive:false) else{diagnosticStatus.stringValue="GitHub: разрешите доступ через Журнал GitHub…";return}
   let events=pending.batch(), currentGeneration=generation
   let url=URL(string:"https://api.github.com/repos/sorokinvop-rgb/pokerdom-review/issues/1/comments")!
-  var request=URLRequest(url:url,timeoutInterval:20);request.httpMethod="POST";request.setValue("Bearer "+secret,forHTTPHeaderField:"Authorization");request.setValue("application/vnd.github+json",forHTTPHeaderField:"Accept");request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.setValue("PokerdomReview/2.8",forHTTPHeaderField:"User-Agent");request.httpBody=try? JSONSerialization.data(withJSONObject:["body":events.map{$0.body}.joined(separator:"\n\n---\n\n")])
+  var request=URLRequest(url:url,timeoutInterval:20);request.httpMethod="POST";request.setValue("Bearer "+secret,forHTTPHeaderField:"Authorization");request.setValue("application/vnd.github+json",forHTTPHeaderField:"Accept");request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.setValue("PokerdomReview/2.9",forHTTPHeaderField:"User-Agent");request.httpBody=try? JSONSerialization.data(withJSONObject:["body":events.map{$0.body}.joined(separator:"\n\n---\n\n")])
   sending=true;lastSent=Date();diagnosticStatus.stringValue="GitHub: отправка \(events.count) отчётов…"
   session.dataTask(with:request){[weak self] _,response,error in
    let code=(response as? HTTPURLResponse)?.statusCode ?? 0
@@ -102,7 +104,7 @@ final class DiagnosticsAction:NSObject, URLSessionTaskDelegate {
 }
 class Actions:NSObject {
  var archive:URL?
- @objc func history(){ let panel=NSOpenPanel(); panel.directoryURL=FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/Pokerdom Review"); panel.allowedFileTypes=["txt"]; guard panel.runModal() == .OK, let url=panel.url, let report=try? String(contentsOf:url,encoding:.utf8) else{return}; visibleHands=nil; archivedShowdown=false; heroField.stringValue=""; oppField.stringValue=""; boardField.stringValue=""; preview.image=nil; baseReport=report; analysisText=""; savedText="Архивный отчёт"; refreshReport() }
+ @objc func history(){ let panel=NSOpenPanel(); panel.directoryURL=FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/Pokerdom Review"); panel.allowedFileTypes=["txt"]; guard panel.runModal() == .OK, let url=panel.url, let report=try? String(contentsOf:url,encoding:.utf8) else{return}; lastOCR=""; visibleHands=nil; archivedShowdown=false; archivedOmahaCandidate=false; manualReviewGame=nil; heroField.stringValue=""; oppField.stringValue=""; boardField.stringValue=""; preview.image=nil; baseReport=report; analysisText=""; savedText="Архивный отчёт"; refreshReport() }
  var timer:Timer?
  var processed=Set<String>()
  var pending=Set<String>()
@@ -124,13 +126,15 @@ class Actions:NSObject {
  var batch=[String]()
  var hashes=Set<String>()
  for url in files.sorted(by:{$0.path<$1.path}) where ["png","jpg","jpeg"].contains(url.pathExtension.lowercased()) { guard let digest=try? imageDigest(url), hashes.insert(digest).inserted else{continue}; process(url); count += 1; batch.append(url.lastPathComponent+"\n"+baseReport) }
- heroField.stringValue=""; oppField.stringValue=""; boardField.stringValue=""; preview.image=nil; baseReport="Пакет: \(count) уникальных файлов\n\n"+batch.joined(separator:"\n\n────────\n\n"); analysisText=""; savedText=""; visibleHands=nil; archivedShowdown=false; refreshReport()
+ heroField.stringValue=""; oppField.stringValue=""; boardField.stringValue=""; preview.image=nil; lastOCR=""; baseReport="Пакет: \(count) уникальных файлов\n\n"+batch.joined(separator:"\n\n────────\n\n"); analysisText=""; savedText=""; visibleHands=nil; archivedShowdown=false; archivedOmahaCandidate=false; manualReviewGame=nil; refreshReport()
  }
  func process(_ url:URL){
- lastOCR=""; visibleHands=nil; archivedShowdown=false; heroField.stringValue=""; oppField.stringValue=""; boardField.stringValue=""; format.state = .off; preview.image=NSImage(contentsOf:url); baseReport=""; analysisText=""; savedText=""; summary.stringValue="Распознавание…"; output.string="Распознавание…"
+ lastOCR=""; visibleHands=nil; archivedShowdown=false; archivedOmahaCandidate=false; manualReviewGame=nil; heroField.stringValue=""; oppField.stringValue=""; boardField.stringValue=""; format.state = .off; preview.image=NSImage(contentsOf:url); baseReport=""; analysisText=""; savedText=""; summary.stringValue="Распознавание…"; output.string="Распознавание…"
  let request=VNRecognizeTextRequest(); request.recognitionLevel = .accurate; request.recognitionLanguages=["ru-RU","en-US"]; request.usesLanguageCorrection=false
  do {
- try VNImageRequestHandler(url:url,options:[:]).perform([request])
+ guard let original=loadArchiveImage(url) else {throw NSError(domain:"Archive image",code:1,userInfo:[NSLocalizedDescriptionKey:"Не удалось открыть изображение"])}
+ let image=cropArchiveImage(original) ?? original
+ try VNImageRequestHandler(cgImage:image,options:[:]).perform([request])
  let lines=(request.results ?? []).compactMap{$0.topCandidates(1).first?.string}
  let raw=lines.joined(separator:"\n")
  if isReviewWindow(raw) { lastOCR=raw; baseReport="Выбран снимок приложения, а не исходный снимок стола."; refreshReport(); DiagnosticsAction.shared.publish(DiagnosticEvent(status:.unconfirmed,reason:.notTableImage)); return }
@@ -138,45 +142,73 @@ class Actions:NSObject {
    let r=obs.boundingBox; return r.midX > 0.25 && r.midX < 0.75 && r.midY > 0.55 && r.midY < 0.75
  }.compactMap{$0.topCandidates(1).first?.string}
  let bank=extract(bankLines.joined(separator:"\n"),#"(?:банк|pot)[ \t]*[:：]?[ \t]*([0-9]+(?:[ \u00a0\u202f][0-9]{3})*(?:[.,][0-9]{1,2})?)(?![0-9.,])"#) ?? "не распознан"
- let foundCombos=lines.filter{line in ["фулл-хаус","две пары","стрит","флеш","каре","тройка","сет","пара"].contains{line.lowercased().contains($0)}}
- var seen=Set<String>()
- let combos=foundCombos.filter{seen.insert($0.lowercased().trimmingCharacters(in:.whitespaces)).inserted}
+ let markerObservations=(request.results ?? []).compactMap { obs -> (String,Double,Double)? in
+  guard let text=obs.topCandidates(1).first?.string else{return nil}
+  return (text,Double(obs.boundingBox.midX),Double(obs.boundingBox.midY))
+ }
+ let markers=distinctShowdownMarkers(markerObservations)
+ let combos=markers.map{$0.0}
  let initialGame=detectGameFormat(raw)
- let game=initialGame == "не определён" ? detectGameFormat(readGameCaption(url)) : initialGame
+ let game=initialGame == "не определён" ? detectGameFormat(readGameCaption(image)) : initialGame
  let shortDeck=game == "6+ Холдем"
  let omaha=game == "Омаха"
  format.state = shortDeck ? .on : .off
  let seats:[(String,Double,Double)] = [("Слева сверху",0.14,0.635),("Сверху",0.50,0.75),("Справа сверху",0.85,0.635),("Слева снизу",0.13,0.285),("Справа снизу",0.87,0.285),("Снизу",0.50,0.135)]
- var recognizedStacks=0
- let stackCandidates=seats.map { seat -> String in
+ let stackObservations=(request.results ?? []).compactMap { obs -> StackObservation? in
+  guard let candidate=obs.topCandidates(1).first else{return nil}
+  return StackObservation(text:candidate.string,x:Double(obs.boundingBox.midX),y:Double(obs.boundingBox.midY),confidence:Double(candidate.confidence))
+ }
+ func readStacks(_ positions:[(String,Double,Double)], tournament:Bool=false)->(Int,[String]) {
+ var count=0
+ let values=positions.map { seat -> String in
    let explicitZero = (request.results ?? []).contains { obs in
      let r=obs.boundingBox
      guard abs(r.midX-seat.1)<0.10, abs(r.midY-seat.2)<0.035, let t=obs.topCandidates(1).first?.string else{return false}
      return extract(t,#"^\s*(0)[ \t]*(?:[рpРP][.]?|₽|руб[.]?)\s*$"#) != nil
    }
-   let value=readSeatStack(url, x:seat.1, y:seat.2) ?? (explicitZero ? "0" : nil)
-   if value != nil { recognizedStacks += 1 }
+   let value=readSeatStack(image, x:seat.1, y:seat.2) ?? (explicitZero ? "0" : nil) ?? (tournament ? tournamentStackFromObservations(stackObservations,x:seat.1,y:seat.2) : nil)
+   if value != nil {count+=1}
    return "\(seat.0): \(value ?? "не распознан")"
  }
+ return (count,values)
+ }
+ var (recognizedStacks,stackCandidates)=readStacks(seats)
+ // Compare a second, explicitly tournament-labelled layout if regular reading is incomplete.
+ if recognizedStacks<6, let centers=tournamentStackCenters(raw) {
+  let alternative=zip(seats,centers).map { pair in (pair.0.0,pair.1.0,pair.1.1) }
+  let candidate=readStacks(alternative,tournament:true)
+  if preferTournamentStacks(regular:recognizedStacks,alternate:candidate.0) { (recognizedStacks,stackCandidates)=candidate }
+ }
  let active=hasActiveAction(lines)
+ let pairConsistent=hasConsistentShowdownPair(combos)
+ manualReviewGame=manualArchiveFormat(game:game,labels:combos,active:active)
+ archivedOmahaCandidate=manualReviewGame == "Омаха"
  let preliminary=ReviewGate.assess(game:game,markers:combos.count,active:active,cardsRecognized:false)
+ let safePreliminary:ReviewGate = preliminary == .cardsUnconfirmed && !pairConsistent ? .ambiguousShowdown : preliminary
  var cardFailure = CardReadFailure.notChecked
- let detected = preliminary == .cardsUnconfirmed ? recognizeArchivedCards(url, failure:&cardFailure) : nil
- let reason=ReviewGate.assess(game:game,markers:combos.count,active:active,cardsRecognized:detected != nil)
+ var detected:(String,String,String)? = nil
+ if safePreliminary == .cardsUnconfirmed {
+  if calibratedShowdownSeats(markers) {detected=recognizeArchivedCards(image,failure:&cardFailure)}
+  else {cardFailure = .unsupportedLayout}
+ }
+ if let (a,c,b)=detected, !validArchivedDeck(a,c,b,short:shortDeck) {detected=nil;cardFailure = .invalidDeck}
+ let reason = safePreliminary == .ambiguousShowdown ? safePreliminary : ReviewGate.assess(game:game,markers:combos.count,active:active,cardsRecognized:detected != nil)
  archivedShowdown = reason == .candidate
  if let (a,c,b)=detected, archivedShowdown { boardField.stringValue=b; visibleHands=(a,c) }
  let payoutLines = (request.results ?? []).filter { obs in
    let r=obs.boundingBox; return r.midX > 0.20 && r.midX < 0.80 && r.midY > 0.32 && r.midY < 0.46
  }.compactMap{$0.topCandidates(1).first?.string}.compactMap{extract($0,#"^\s*([0-9]+(?:[ \u00a0\u202f][0-9]{3})*(?:[.,][0-9]{1,2})?)[ \t]*(?:[рpРP][.]?|₽)\s*$"#)}
  let payout = archivedShowdown && payoutLines.count == 1 ? payoutLines[0] : "не подтверждён"
- let cardReport = omaha ? "Омаха: автоматический разбор карт пока не поддерживается." : !archivedShowdown ? "Карты: завершённая раздача не подтверждена." : "Карты (предварительно): слева снизу \(detected!.0); слева сверху \(detected!.1); стол \(detected!.2). Личные карты не установлены."
+ let cardReport = omaha ? "Омаха: автоматическое чтение карт пока не поддерживается. Для завершённого архивного снимка с признаками вскрытия можно сверить и ввести две открытые руки по 4 карты и стол из 5 карт." : !archivedShowdown ? "Карты: завершённая раздача не подтверждена." : "Карты (предварительно): слева снизу \(detected!.0); слева сверху \(detected!.1); стол \(detected!.2). Личные карты не установлены."
  let report="Файл: \(url.lastPathComponent)\nБанк: \(bank)\nФормат: \(game)\nКомбинации: \(combos.isEmpty ? "не распознаны" : combos.joined(separator:"; "))\nСтеки: распознано \(recognizedStacks) из \(seats.count) (проверьте):\n\(stackCandidates.joined(separator: "\n"))\nВозможная выплата: \(payout)\n\(cardReport)\nСтатус: \(archivedShowdown ? "кандидат на завершённую раздачу" : "завершение не подтверждено; личные карты не установлены")"
  if archivedShowdown { analysisText = "Сверьте карты и формат игры. Укажите личные карты только если они вам известны." }
+ else if manualReviewGame != nil {analysisText="Есть согласованные итоговые метки. Автоматическое чтение не подтверждено. Для архивного разбора введите обе видимые руки и все пять общих карт, затем подтвердите завершение."}
  lastOCR=raw
  baseReport=report; refreshReport()
  if diagnosticMode { return }
  let dir=FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/Pokerdom Review")
- do {try FileManager.default.createDirectory(at:dir,withIntermediateDirectories:true,attributes:nil); try (report+"\n\n"+analysisText).write(to:dir.appendingPathComponent((try imageDigest(url))+".txt"),atomically:true,encoding:.utf8); savedText="Отчёт сохранён в Документы/Pokerdom Review"; DiagnosticsAction.shared.publish(DiagnosticEvent(status:archivedShowdown ? .completed : .unconfirmed, stacks:recognizedStacks, cards:archivedShowdown ? 9 : 0, bank:bank != "не распознан", payout:payout != "не подтверждён", reason:reason, cardFailure:cardFailure)); refreshReport()} catch {output.string += "\n\nНе удалось сохранить отчёт: \(error.localizedDescription)"}
+ DiagnosticsAction.shared.publish(DiagnosticEvent(status:archivedShowdown ? .completed : .unconfirmed, stacks:recognizedStacks, cards:archivedShowdown ? 9 : 0, bank:bank != "не распознан", payout:payout != "не подтверждён", reason:reason, cardFailure:cardFailure))
+ do {try FileManager.default.createDirectory(at:dir,withIntermediateDirectories:true,attributes:nil); try (report+"\n\n"+analysisText).write(to:dir.appendingPathComponent((try imageDigest(url))+".txt"),atomically:true,encoding:.utf8); savedText="Отчёт сохранён в Документы/Pokerdom Review"; refreshReport()} catch {savedText="Не удалось сохранить отчёт: \(error.localizedDescription)";refreshReport()}
  } catch {baseReport="Ошибка чтения изображения: \(error.localizedDescription)"; refreshReport(); DiagnosticsAction.shared.publish(DiagnosticEvent(status:.recognitionError))}
  }
 }
@@ -184,10 +216,27 @@ let fields=NSStackView(); fields.orientation = .horizontal
 let heroField=NSTextField(string: ""); heroField.placeholderString="Ваши карты"
 let oppField=NSTextField(string: ""); oppField.placeholderString="Карты соперника"
 let boardField=NSTextField(string: ""); boardField.placeholderString="Карты стола"
-let format=NSButton(checkboxWithTitle:"6+",target:nil,action:nil)
+let format=NSButton(checkboxWithTitle:"6+",target:nil,action:nil); format.isEnabled=false
 for f in [heroField,oppField,boardField] {f.widthAnchor.constraint(equalToConstant:f === boardField ? 220:140).isActive=true; fields.addArrangedSubview(f)}
 fields.addArrangedSubview(format)
-class MathAction:NSObject { @objc func calculate(){guard archivedShowdown else {analysisText="Разбор доступен только для подтверждённой завершённой раздачи Холдема."; refreshReport(); return}; guard let h=parseCards(heroField.stringValue),let o=parseCards(oppField.stringValue),let b=parseCards(boardField.stringValue) else {output.string += "\nПроверьте формат карт: KS KD (C/D/H/S).";return}; analysisText=retrospective(h,o,b,short:format.state == .on); refreshReport() } }
+class MathAction:NSObject {
+ @objc func calculate(){
+  guard let reviewGame=manualReviewGame else {analysisText="Разбор доступен только для архивного снимка с признаками завершённой раздачи.";refreshReport();return}
+  guard let h=parseCards(heroField.stringValue),let o=parseCards(oppField.stringValue),let b=parseCards(boardField.stringValue) else{analysisText="Проверьте формат карт: KS KD (C/D/H/S).";refreshReport();return}
+  if reviewGame == "Омаха" {
+   guard let result=confirmedOmahaResult(h,o,b) else{analysisText="Омаха: нужны 13 разных допустимых карт (4 + 4 + 5).";refreshReport();return}
+   let confirm=NSAlert();confirm.messageText="Подтвердите завершённую раздачу Омахи";confirm.informativeText="Сверьте все открытые карты с сохранённым изображением. Разбор только после окончания игры.";confirm.addButton(withTitle:"Подтверждаю");confirm.addButton(withTitle:"Отмена")
+   guard confirm.runModal() == .alertFirstButtonReturn else{return};analysisText=result
+  } else {
+   let short=reviewGame == "6+ Холдем"
+   guard h.count==2,o.count==2,b.count==5,Set(h+o+b).count==9,(h+o+b).allSatisfy({(short ? 6:2)...14 ~= $0.rank && "CDHS".contains($0.suit)}) else{analysisText="Нужны 9 разных допустимых карт (2 + 2 + 5).";refreshReport();return}
+   let confirm=NSAlert();confirm.messageText="Подтвердите завершённую раздачу";confirm.informativeText="Сверьте открытые карты, стол и формат игры с сохранённым изображением. Разбор только после окончания игры.";confirm.addButton(withTitle:"Подтверждаю");confirm.addButton(withTitle:"Отмена")
+   guard confirm.runModal() == .alertFirstButtonReturn else{return}
+   analysisText=retrospective(h,o,b,short:short)
+  }
+  refreshReport()
+ }
+}
 let mathAction=MathAction(); fields.addArrangedSubview(NSButton(title:"Разбор",target:mathAction,action:#selector(MathAction.calculate))); root.insertArrangedSubview(fields,at:1)
 let actions=Actions(); let button=NSButton(title:"Открыть скриншот",target:actions,action:#selector(Actions.open)); let controls=NSStackView(views:[button,NSButton(title:"Папка раздач",target:actions,action:#selector(Actions.folder)),NSButton(title:"Показать OCR",target:actions,action:#selector(Actions.showOCR))]); root.insertArrangedSubview(controls,at:1)
 let status=NSTextField(labelWithString:"Автоимпорт выключен")
@@ -210,8 +259,12 @@ if diagnosticMode {
   let statusOK = archivedShowdown == (i == 0)
   let cardsOK = i == 0 ? (boardField.stringValue == "JD 6S TH 3H 4D" && visibleHands?.0 == "6C 6D" && visibleHands?.1 == "3D 2D") : visibleHands == nil
   let expectedFirst=["Слева сверху: 0","Сверху: 516,33","Справа сверху: 247,70","Слева снизу: 47,44","Справа снизу: 246,79","Снизу: 634,20","Возможная выплата: 631,08","Формат: Холдем"]
-  let reportLines=Set(baseReport.components(separatedBy:"\n"))
-  let firstDetailsOK=i != 0 || expectedFirst.allSatisfy{reportLines.contains($0)}
+  let firstDetailsOK=i != 0 || matchingFixtureLines(baseReport,expected:expectedFirst)==expectedFirst.count
+  if i == 4 {
+   let tournamentExpected=["Слева сверху: 72991","Сверху: 5875","Справа сверху: 26325","Слева снизу: 22250","Справа снизу: 15600","Снизу: 10000"]
+   let matches=matchingFixtureLines(baseReport,expected:tournamentExpected)
+   print("INFO experimental tournament stack recognition: \(matches)/6 exact fixture values; non-blocking until independently validated")
+  }
   let ok = bank == expected[i] && statusOK && cardsOK && firstDetailsOK
   print("\(ok ? "PASS" : "FAIL") fixture \(i+1): \(bankLine), status=\(archivedShowdown), board=\(boardField.stringValue)")
   if !ok { failures += 1 }
@@ -225,8 +278,7 @@ diagnostics.publish(DiagnosticEvent(status:.connected))
 window.isReleasedWhenClosed=false; window.center(); window.makeKeyAndOrderFront(nil); app.activate(ignoringOtherApps:true);  app.run()
 
 // Read the numeric line independently at two scales and with enhanced contrast.
-func readSeatStack(_ url:URL,x:Double,y:Double)->String? {
- guard let source=CGImageSourceCreateWithURL(url as CFURL,nil),let image=CGImageSourceCreateImageAtIndex(source,0,nil) else{return nil}
+func readSeatStack(_ image:CGImage,x:Double,y:Double)->String? {
  let w=CGFloat(image.width),h=CGFloat(image.height)
  let region=CGRect(x:max(0,x-0.12)*w,y:max(0,1-y-0.025)*h,width:min(0.28,1-max(0,x-0.12))*w,height:min(0.065,1-max(0,1-y-0.025))*h).integral
  guard let crop=image.cropping(to:region) else{return nil}
@@ -252,8 +304,7 @@ func readSeatStack(_ url:URL,x:Double,y:Double)->String? {
 }
 
 // Separate OCR pass for the caption below the board; no inference from stakes or card counts.
-func readGameCaption(_ url:URL)->String {
- guard let source=CGImageSourceCreateWithURL(url as CFURL,nil),let image=CGImageSourceCreateImageAtIndex(source,0,nil) else{return ""}
+func readGameCaption(_ image:CGImage)->String {
  let w=CGFloat(image.width),h=CGFloat(image.height)
  let rect=CGRect(x:0.34*w,y:0.55*h,width:0.32*w,height:0.15*h).integral
  guard let crop=image.cropping(to:rect) else{return ""}
